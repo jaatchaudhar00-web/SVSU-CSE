@@ -2,13 +2,19 @@
 
 /*
   SVSU CSE Portal
-  Supabase tables expected:
+
+  Supabase tables:
   notices: id, title, category, content, created_at
   timetable: id, course, semester, day, class_time, subject, faculty, room
 
-  Requires supabase-config.js to define:
-  SUPABASE_URL
-  SUPABASE_PUBLISHABLE_KEY
+  Optional settings table:
+  site_settings: key, value
+
+  SECURITY:
+  - Admin login uses Supabase Authentication.
+  - The admin field must contain the admin's registered Supabase email.
+  - Configure Supabase RLS policies before allowing writes.
+  - Student login below is a demo profile login, not verified authentication.
 */
 
 const supabaseClient = window.supabase.createClient(
@@ -22,7 +28,11 @@ let currentRole = "student";
 let currentUser = null;
 let notices = [];
 let timetable = [];
-let selectedDay = "All";
+let siteSettings = {
+  portal_name: "SVSU CSE Portal",
+  contact_phone: "",
+  contact_email: ""
+};
 
 const days = [
   "Monday", "Tuesday", "Wednesday",
@@ -63,62 +73,73 @@ function fillSemesters() {
     const select = $(id);
     if (!select) return;
 
+    const previous = select.value;
     select.innerHTML = "";
+
     for (let i = 1; i <= 8; i++) {
       const option = document.createElement("option");
       option.value = String(i);
       option.textContent = `Semester ${i}`;
       select.appendChild(option);
     }
+
+    if (previous) select.value = previous;
   });
 }
 
 function updateRoleForm(role) {
-  currentRole = role;
+  currentRole = role === "admin" ? "admin" : "student";
 
   document.querySelectorAll(".tab").forEach((tab) => {
-    tab.classList.toggle("active", tab.dataset.role === role);
+    tab.classList.toggle("active", tab.dataset.role === currentRole);
   });
 
-  const student = role === "student";
-  const teacher = role === "teacher";
-  const admin = role === "admin";
+  const isAdmin = currentRole === "admin";
 
   if ($("identityLabel")) {
     $("identityLabel").textContent =
-      admin ? "Admin username" : teacher ? "Teacher username / staff ID" : "Roll number";
+      isAdmin ? "Admin email" : "Roll number";
   }
 
   if ($("rollNumber")) {
     $("rollNumber").placeholder =
-      admin ? "Enter admin username" :
-      teacher ? "Enter teacher username" : "Enter your roll number";
+      isAdmin ? "Enter registered admin email" : "Enter your roll number";
+
+    $("rollNumber").autocomplete = isAdmin ? "username" : "off";
   }
 
-  $("folderGroup")?.classList.toggle("hidden", !student);
-  $("courseGroup")?.classList.toggle("hidden", !student);
-  $("semesterGroup")?.classList.toggle("hidden", !student);
-  $("adminPasswordGroup")?.classList.toggle("hidden", !admin);
-  $("teacherApplyPrompt")?.classList.toggle("hidden", !teacher);
+  $("folderGroup")?.classList.toggle("hidden", isAdmin);
+  $("courseGroup")?.classList.toggle("hidden", isAdmin);
+  $("semesterGroup")?.classList.toggle("hidden", isAdmin);
+  $("adminPasswordGroup")?.classList.toggle("hidden", !isAdmin);
+
+  if ($("adminPassword")) {
+    $("adminPassword").required = isAdmin;
+  }
+
+  if ($("fullName")) {
+    $("fullName").required = !isAdmin;
+    $("fullName").placeholder = isAdmin
+      ? "Admin name (optional)"
+      : "Enter your name";
+  }
+
+  if ($("loginButton")) {
+    $("loginButton").textContent = isAdmin
+      ? "Admin Login"
+      : "Student Login";
+  }
 }
 
 function showView(viewName) {
   const allowedViews = [
-    "overview", "timetable", "notices",
-    "profile", "teacherApply", "admin"
+    "overview", "timetable", "notices", "profile", "admin"
   ];
 
   if (!allowedViews.includes(viewName)) return;
 
   if (viewName === "admin" && currentRole !== "admin") {
     toast("Admin access required.");
-    return;
-  }
-
-  if (viewName === "teacherApply" &&
-      currentRole !== "teacher" &&
-      currentRole !== "student") {
-    toast("This section is not available for this account.");
     return;
   }
 
@@ -137,47 +158,102 @@ function showView(viewName) {
     timetable: ["Class timetable", "Timetable"],
     notices: ["Notices & events", "Notices & Events"],
     profile: ["My profile", "My Profile"],
-    teacherApply: ["Teacher access application", "Teacher Application"],
-    admin: ["Manage portal", "Manage Portal"]
+    admin: ["Website control panel", "Admin Control Panel"]
   };
 
   if (titles[viewName]) {
-    $("pageTitle").textContent = titles[viewName][0];
-    $("breadcrumbPage").textContent = titles[viewName][1];
+    if ($("pageTitle")) $("pageTitle").textContent = titles[viewName][0];
+    if ($("breadcrumbPage")) {
+      $("breadcrumbPage").textContent = titles[viewName][1];
+    }
   }
 
   if (viewName === "admin") renderAdminData();
 }
 
-function signIn(event) {
+async function signIn(event) {
   event.preventDefault();
 
   const name = $("fullName")?.value.trim() || "";
   const identity = $("rollNumber")?.value.trim() || "";
   const password = $("adminPassword")?.value || "";
 
-  if (!name || !identity) {
-    toast("Please complete the required fields.");
+  if (!identity) {
+    toast(currentRole === "admin"
+      ? "Enter the registered admin email."
+      : "Enter your roll number.");
     return;
   }
 
   if (currentRole === "admin") {
-    toast(
-      "Admin login is not connected to secure Supabase Authentication yet. " +
-      "Do not use a hardcoded password for a public website."
-    );
+    if (!password) {
+      toast("Enter the admin password.");
+      return;
+    }
+
+    const button = $("loginButton");
+    if (button) button.disabled = true;
+
+    try {
+      const { data, error } = await supabaseClient.auth.signInWithPassword({
+        email: identity,
+        password
+      });
+
+      if (error) throw error;
+
+      const authUser = data.user;
+      if (!authUser) throw new Error("Admin account was not returned.");
+
+      // Do not trust the browser role alone.
+      // Admin authorization must also be enforced by Supabase RLS.
+      const { data: profile, error: profileError } = await supabaseClient
+        .from("profiles")
+        .select("role,full_name")
+        .eq("id", authUser.id)
+        .maybeSingle();
+
+      if (profileError) throw profileError;
+
+      if (!profile || profile.role !== "admin") {
+        await supabaseClient.auth.signOut();
+        throw new Error(
+          "This account is not marked as an admin in the profiles table."
+        );
+      }
+
+      currentRole = "admin";
+      currentUser = {
+        id: authUser.id,
+        name: profile.full_name || authUser.email || "Admin",
+        roll: authUser.email || "",
+        folder: "",
+        course: "Administration",
+        semester: 1,
+        role: "admin"
+      };
+
+      openDashboard();
+      await loadAllData();
+    } catch (error) {
+      console.error("Admin login error:", error);
+      toast(error.message || "Admin login failed. Check your account setup.");
+    } finally {
+      if (button) button.disabled = false;
+    }
+
     return;
   }
 
-  if (currentRole === "teacher") {
-    toast(
-      "Teacher login requires a registered and approved Supabase account. " +
-      "Authentication has not been configured yet."
-    );
+  // Demo-only student profile login.
+  // Use real authentication if student data needs to be protected.
+  if (!name) {
+    toast("Please enter your name.");
     return;
   }
 
   currentUser = {
+    id: null,
     name,
     roll: identity,
     folder: $("folderNumber")?.value.trim() || "",
@@ -186,7 +262,9 @@ function signIn(event) {
     role: "student"
   };
 
+  currentRole = "student";
   openDashboard();
+  await loadAllData();
 }
 
 function openDashboard() {
@@ -196,32 +274,47 @@ function openDashboard() {
   const user = currentUser;
   if (!user) return;
 
-  $("sidebarName").textContent = user.name;
-  $("sidebarRole").textContent = user.role.toUpperCase();
-  $("sidebarAvatar").textContent = user.name.charAt(0).toUpperCase();
-  $("welcomeName").textContent = user.name;
-  $("courseStat").textContent = user.course;
-  $("semesterStat").textContent = `Semester ${user.semester}`;
-  $("profileName").textContent = user.name;
-  $("profileRole").textContent = user.role.toUpperCase();
-  $("profileRoll").textContent = user.roll;
-  $("profileFolder").textContent = user.folder || "—";
-  $("profileCourse").textContent = user.course;
-  $("profileSemester").textContent = `Semester ${user.semester}`;
+  if ($("sidebarName")) $("sidebarName").textContent = user.name;
+  if ($("sidebarRole")) $("sidebarRole").textContent = user.role.toUpperCase();
+  if ($("sidebarAvatar")) {
+    $("sidebarAvatar").textContent = user.name.charAt(0).toUpperCase();
+  }
+
+  if ($("welcomeName")) $("welcomeName").textContent = user.name;
+  if ($("courseStat")) $("courseStat").textContent = user.course;
+  if ($("semesterStat")) {
+    $("semesterStat").textContent = `Semester ${user.semester}`;
+  }
+
+  if ($("profileName")) $("profileName").textContent = user.name;
+  if ($("profileRole")) $("profileRole").textContent = user.role.toUpperCase();
+  if ($("profileRoll")) $("profileRoll").textContent = user.roll || "—";
+  if ($("profileFolder")) $("profileFolder").textContent = user.folder || "—";
+  if ($("profileCourse")) $("profileCourse").textContent = user.course;
+  if ($("profileSemester")) {
+    $("profileSemester").textContent = `Semester ${user.semester}`;
+  }
 
   $("adminNav")?.classList.toggle("hidden", user.role !== "admin");
-  $("teacherApplyNav")?.classList.toggle("hidden", user.role !== "student");
 
   showView("overview");
   renderTimetable();
   renderNotices();
 }
 
-function signOut() {
+async function signOut() {
+  if (currentUser?.role === "admin") {
+    const { error } = await supabaseClient.auth.signOut();
+    if (error) console.error("Sign-out error:", error);
+  }
+
   currentUser = null;
+  currentRole = "student";
+
   $("dashboardPage")?.classList.add("hidden");
   $("loginPage")?.classList.remove("hidden");
   $("loginForm")?.reset();
+
   updateRoleForm("student");
 }
 
@@ -231,23 +324,35 @@ function normaliseNotice(row) {
     title: row.title || "Untitled notice",
     category: row.category || "General",
     text: row.content || "",
-    date: row.created_at ? new Date(row.created_at).toLocaleString() : "",
-    effective: "",
-    photo: ""
+    date: row.created_at
+      ? new Date(row.created_at).toLocaleString()
+      : ""
   };
 }
 
 function normaliseClass(row) {
   return {
     id: row.id,
-    course: row.course,
-    semester: Number(row.semester),
-    day: row.day,
+    course: row.course || "B.Tech CSE",
+    semester: Number(row.semester || 1),
+    day: row.day || "",
     time: row.class_time || "",
     subject: row.subject || "",
     faculty: row.faculty || "",
     room: row.room || ""
   };
+}
+
+async function loadAllData() {
+  setConnectionStatus("Connecting…");
+
+  await Promise.allSettled([
+    loadNotices(),
+    loadTimetable(),
+    loadSiteSettings()
+  ]);
+
+  setConnectionStatus("Supabase connected");
 }
 
 async function loadNotices() {
@@ -258,61 +363,72 @@ async function loadNotices() {
 
   if (error) {
     console.error("Notices load error:", error);
-    toast("Notices could not load. Check Supabase policies and connection.");
+    setConnectionStatus("Notices unavailable");
+    toast("Notices could not load. Check Supabase connection and policies.");
     return;
   }
 
   notices = (data || []).map(normaliseNotice);
   renderNotices();
+  renderAdminData();
 }
 
 async function loadTimetable() {
   const { data, error } = await supabaseClient
     .from("timetable")
-    .select("id,course,semester,day,class_time,subject,faculty,room")
-    .order("day")
-    .order("class_time");
+    .select("id,course,semester,day,class_time,subject,faculty,room");
 
   if (error) {
     console.error("Timetable load error:", error);
-    toast("Timetable could not load. Check Supabase policies and connection.");
+    setConnectionStatus("Timetable unavailable");
+    toast("Timetable could not load. Check Supabase connection and policies.");
     return;
   }
 
-  timetable = (data || []).map(normaliseClass);
+  const dayOrder = new Map(days.map((day, index) => [day, index]));
+
+  timetable = (data || [])
+    .map(normaliseClass)
+    .sort((a, b) =>
+      (dayOrder.get(a.day) ?? 99) - (dayOrder.get(b.day) ?? 99) ||
+      a.time.localeCompare(b.time)
+    );
+
   renderTimetable();
+  renderAdminData();
 }
 
 function renderNotices() {
-  const all = $("allNotices");
-  const latest = $("latestNotices");
+  const list = $("noticeList");
+  const recent = $("recentNotices");
 
-  if ($("noticeCount")) $("noticeCount").textContent = notices.length;
-  if ($("noticeStat")) $("noticeStat").textContent = notices.length;
-
-  if (all) {
-    all.innerHTML = notices.length
-      ? notices.map((notice) => `
-          <article class="notice-card">
-            <span class="notice-type">${escapeHTML(notice.category)}</span>
+  const html = notices.length
+    ? notices.map((notice) => `
+        <article class="notice-item">
+          <div>
+            <span class="notice-category">${escapeHTML(notice.category)}</span>
             <h3>${escapeHTML(notice.title)}</h3>
             <p>${escapeHTML(notice.text)}</p>
-            <div class="notice-date">${escapeHTML(notice.date)}</div>
+            <small>${escapeHTML(notice.date)}</small>
+          </div>
+        </article>
+      `).join("")
+    : "<p>No notices have been published yet.</p>";
+
+  if (list) list.innerHTML = html;
+
+  if (recent) {
+    recent.innerHTML = notices.length
+      ? notices.slice(0, 3).map((notice) => `
+          <article class="notice-item">
+            <div>
+              <span class="notice-category">${escapeHTML(notice.category)}</span>
+              <h3>${escapeHTML(notice.title)}</h3>
+              <p>${escapeHTML(notice.text)}</p>
+            </div>
           </article>
         `).join("")
-      : `<p class="empty-state">No notices have been published yet.</p>`;
-  }
-
-  if (latest) {
-    latest.innerHTML = notices.slice(0, 4).map((notice) => `
-      <div class="notice-item">
-        <div class="notice-symbol">◉</div>
-        <div>
-          <div class="notice-title">${escapeHTML(notice.title)}</div>
-          <div class="notice-date">${escapeHTML(notice.category)} · ${escapeHTML(notice.date)}</div>
-        </div>
-      </div>
-    `).join("") || `<p class="muted">No recent notices.</p>`;
+      : "<p>No recent notices.</p>";
   }
 }
 
@@ -320,225 +436,294 @@ function renderTimetable() {
   const body = $("timetableBody");
   if (!body) return;
 
-  const course = $("ttCourse")?.value || currentUser?.course || "B.Tech CSE";
-  const semester = Number($("ttSemester")?.value || currentUser?.semester || 1);
-  const day = $("ttDay")?.value || "All";
+  const course = $("ttCourse")?.value || "All";
+  const semester = Number($("ttSemester")?.value || 1);
+  const day = $("dayFilter")?.value || "All";
 
   const filtered = timetable.filter((item) =>
-    item.course === course &&
+    (course === "All" || item.course === course) &&
     item.semester === semester &&
     (day === "All" || item.day === day)
   );
+
+  if (!filtered.length) {
+    body.innerHTML = `
+      <tr><td colspan="5">No timetable entries found for these filters.</td></tr>
+    `;
+    return;
+  }
 
   body.innerHTML = filtered.map((item) => `
     <tr>
       <td>${escapeHTML(item.day)}</td>
       <td>${escapeHTML(item.time)}</td>
-      <td><span class="subject-chip">${escapeHTML(item.subject)}</span></td>
-      <td>${escapeHTML(item.faculty)}</td>
-      <td>${escapeHTML(item.room)}</td>
+      <td>${escapeHTML(item.subject)}</td>
+      <td>${escapeHTML(item.faculty || "—")}</td>
+      <td>${escapeHTML(item.room || "—")}</td>
     </tr>
   `).join("");
-
-  $("emptyTimetable")?.classList.toggle("hidden", filtered.length > 0);
-
-  if ($("classStat")) {
-    $("classStat").textContent = filtered.length;
-  }
-
-  if ($("ttSummary")) {
-    $("ttSummary").textContent =
-      `${filtered.length} entries · ${course} · Semester ${semester}`;
-  }
-
-  const schedule = $("todaySchedule");
-  if (schedule) {
-    const preview = filtered.slice(0, 4);
-    schedule.innerHTML = preview.map((item) => `
-      <div class="schedule-item">
-        <div class="schedule-time">${escapeHTML(item.time)}</div>
-        <div class="schedule-line"></div>
-        <div>
-          <div class="schedule-subject">${escapeHTML(item.subject)}</div>
-          <div class="schedule-detail">
-            ${escapeHTML(item.day)} · ${escapeHTML(item.faculty)} · ${escapeHTML(item.room)}
-          </div>
-        </div>
-      </div>
-    `).join("") || `<p class="muted">No matching timetable entries.</p>`;
-  }
 }
 
 function renderAdminData() {
-  const dataList = $("adminDataList");
-  if (!dataList) return;
+  const container = $("adminData");
+  if (!container || currentRole !== "admin") return;
 
-  const classRows = timetable.map((item) => `
-    <div class="admin-row">
+  const noticeHTML = notices.map((notice) => `
+    <article class="admin-data-item">
+      <div>
+        <strong>${escapeHTML(notice.title)}</strong>
+        <p>${escapeHTML(notice.category)} · ${escapeHTML(notice.date)}</p>
+      </div>
+      <button type="button" class="secondary-btn"
+        data-delete-notice="${escapeHTML(notice.id)}">
+        Delete
+      </button>
+    </article>
+  `).join("");
+
+  const classHTML = timetable.map((item) => `
+    <article class="admin-data-item">
       <div>
         <strong>${escapeHTML(item.subject)}</strong>
-        <p>${escapeHTML(item.course)} · Semester ${item.semester} · ${escapeHTML(item.day)} · ${escapeHTML(item.time)}</p>
+        <p>${escapeHTML(item.course)} · Semester ${item.semester} ·
+          ${escapeHTML(item.day)} · ${escapeHTML(item.time)}</p>
+        <p>${escapeHTML(item.faculty)} · ${escapeHTML(item.room)}</p>
       </div>
-      <span class="status-pill">Timetable</span>
-    </div>
-  `);
+      <button type="button" class="secondary-btn"
+        data-delete-class="${escapeHTML(item.id)}">
+        Delete
+      </button>
+    </article>
+  `).join("");
 
-  const noticeRows = notices.map((item) => `
-    <div class="admin-row">
-      <div>
-        <strong>${escapeHTML(item.title)}</strong>
-        <p>${escapeHTML(item.category)} · ${escapeHTML(item.date)}</p>
-      </div>
-      <span class="status-pill">Notice</span>
-    </div>
-  `);
-
-  dataList.innerHTML = [...classRows, ...noticeRows].join("") ||
-    `<p class="empty-state">No published data found.</p>`;
+  container.innerHTML = `
+    <h3>Notices</h3>
+    ${noticeHTML || "<p>No notices to display.</p>"}
+    <hr>
+    <h3>Timetable classes</h3>
+    ${classHTML || "<p>No classes to display.</p>"}
+  `;
 }
 
-/*
-  These functions send INSERT requests to Supabase.
-  They will work only after secure, appropriate write permissions
-  have been configured in Supabase.
-*/
-
-async function addClass(event) {
-  event.preventDefault();
-
-  if (currentRole !== "admin") {
-    toast("Only an authenticated administrator can add timetable entries.");
-    return;
+function requireAdmin() {
+  if (!currentUser || currentUser.role !== "admin") {
+    toast("Only an authenticated admin can make changes.");
+    return false;
   }
-
-  const row = {
-    course: $("adminCourse").value,
-    semester: Number($("adminSemester").value),
-    day: $("adminDay").value,
-    class_time: $("adminTime").value.trim(),
-    subject: $("adminSubject").value.trim(),
-    faculty: $("adminFaculty").value.trim(),
-    room: $("adminRoom").value.trim()
-  };
-
-  const { error } = await supabaseClient.from("timetable").insert(row);
-
-  if (error) {
-    console.error(error);
-    toast("Save failed. Supabase write permission or admin authentication is missing.");
-    return;
-  }
-
-  $("addClassForm").reset();
-  await loadTimetable();
-  toast("Timetable entry saved.");
+  return true;
 }
 
 async function addNotice(event) {
   event.preventDefault();
+  if (!requireAdmin()) return;
 
-  if (currentRole !== "admin") {
-    toast("Only an authenticated administrator can publish notices.");
+  const title = $("noticeTitle")?.value.trim() || "";
+  const category = $("noticeCategory")?.value || "General";
+  const content = $("noticeContent")?.value.trim() || "";
+
+  if (!title || !content) {
+    toast("Enter a notice title and content.");
     return;
   }
 
-  const row = {
-    title: $("noticeTitle").value.trim(),
-    category: $("noticeCategory").value,
-    content: $("noticeText").value.trim()
-  };
-
-  const { error } = await supabaseClient.from("notices").insert(row);
+  const { error } = await supabaseClient
+    .from("notices")
+    .insert({ title, category, content });
 
   if (error) {
-    console.error(error);
-    toast("Publish failed. Supabase write permission or admin authentication is missing.");
+    console.error("Add notice error:", error);
+    toast("Notice was not saved. Check the notices INSERT policy.");
     return;
   }
 
-  $("addNoticeForm").reset();
+  $("addNoticeForm")?.reset();
   await loadNotices();
-  toast("Notice published.");
+  toast("Notice published successfully.");
 }
 
-function showTeacherApplication() {
-  if (currentUser) {
-    showView("teacherApply");
-  } else {
-    $("applicationModal")?.classList.remove("hidden");
+async function addClass(event) {
+  event.preventDefault();
+  if (!requireAdmin()) return;
+
+  const row = {
+    course: $("adminCourse")?.value || "B.Tech CSE",
+    semester: Number($("adminSemester")?.value || 1),
+    day: $("adminDay")?.value || "Monday",
+    class_time: $("classTime")?.value.trim() || "",
+    subject: $("subject")?.value.trim() || "",
+    faculty: $("faculty")?.value.trim() || "",
+    room: $("room")?.value.trim() || ""
+  };
+
+  if (!row.class_time || !row.subject) {
+    toast("Enter the class time and subject.");
+    return;
   }
+
+  const { error } = await supabaseClient
+    .from("timetable")
+    .insert(row);
+
+  if (error) {
+    console.error("Add class error:", error);
+    toast("Class was not saved. Check the timetable INSERT policy.");
+    return;
+  }
+
+  $("addClassForm")?.reset();
+  fillSemesters();
+  await loadTimetable();
+  toast("Class added successfully.");
+}
+
+async function deleteNotice(id) {
+  if (!requireAdmin()) return;
+  if (!confirm("Delete this notice?")) return;
+
+  const { error } = await supabaseClient
+    .from("notices")
+    .delete()
+    .eq("id", id);
+
+  if (error) {
+    console.error("Delete notice error:", error);
+    toast("Could not delete notice. Check the DELETE policy.");
+    return;
+  }
+
+  await loadNotices();
+  toast("Notice deleted.");
+}
+
+async function deleteClass(id) {
+  if (!requireAdmin()) return;
+  if (!confirm("Delete this timetable class?")) return;
+
+  const { error } = await supabaseClient
+    .from("timetable")
+    .delete()
+    .eq("id", id);
+
+  if (error) {
+    console.error("Delete class error:", error);
+    toast("Could not delete class. Check the DELETE policy.");
+    return;
+  }
+
+  await loadTimetable();
+  toast("Class deleted.");
+}
+
+async function loadSiteSettings() {
+  /*
+    This requires a site_settings table with columns:
+    key (text, primary key), value (text).
+    If that table doesn't exist yet, the default values remain active.
+  */
+  const { data, error } = await supabaseClient
+    .from("site_settings")
+    .select("key,value");
+
+  if (error) {
+    console.info("Site settings table not configured yet:", error.message);
+    return;
+  }
+
+  for (const row of data || []) {
+    if (Object.prototype.hasOwnProperty.call(siteSettings, row.key)) {
+      siteSettings[row.key] = row.value || "";
+    }
+  }
+
+  applySiteSettings();
+}
+
+function applySiteSettings() {
+  if ($("portalTitle")) {
+    $("portalTitle").textContent =
+      siteSettings.portal_name || "SVSU CSE Portal";
+  }
+
+  if ($("settingPortalName")) {
+    $("settingPortalName").value = siteSettings.portal_name || "";
+  }
+  if ($("settingPhone")) {
+    $("settingPhone").value = siteSettings.contact_phone || "";
+  }
+  if ($("settingEmail")) {
+    $("settingEmail").value = siteSettings.contact_email || "";
+  }
+
+  document.title = siteSettings.portal_name || "SVSU CSE Portal";
+}
+
+async function saveSiteSettings() {
+  if (!requireAdmin()) return;
+
+  const updates = {
+    portal_name: $("settingPortalName")?.value.trim() || "SVSU CSE Portal",
+    contact_phone: $("settingPhone")?.value.trim() || "",
+    contact_email: $("settingEmail")?.value.trim() || ""
+  };
+
+  const rows = Object.entries(updates).map(([key, value]) => ({
+    key,
+    value
+  }));
+
+  const { error } = await supabaseClient
+    .from("site_settings")
+    .upsert(rows, { onConflict: "key" });
+
+  if (error) {
+    console.error("Save settings error:", error);
+    toast("Settings not saved. Create site_settings and configure its RLS policies.");
+    return;
+  }
+
+  siteSettings = updates;
+  applySiteSettings();
+  toast("Website settings saved.");
 }
 
 function init() {
   fillSemesters();
-
-  if ($("todayDate")) {
-    $("todayDate").textContent = new Date().toLocaleDateString(undefined, {
-      weekday: "short",
-      month: "short",
-      day: "numeric",
-      year: "numeric"
-    });
-  }
+  updateRoleForm("student");
 
   document.querySelectorAll(".tab").forEach((tab) => {
     tab.addEventListener("click", () => updateRoleForm(tab.dataset.role));
   });
 
   $("loginForm")?.addEventListener("submit", signIn);
-  $("logoutBtn")?.addEventListener("click", signOut);
-  $("addClassForm")?.addEventListener("submit", addClass);
+  $("logoutButton")?.addEventListener("click", signOut);
   $("addNoticeForm")?.addEventListener("submit", addNotice);
+  $("addClassForm")?.addEventListener("submit", addClass);
+  $("saveSettingsButton")?.addEventListener("click", saveSiteSettings);
 
-  document.querySelectorAll(".nav-link[data-view]").forEach((button) => {
-    button.addEventListener("click", () => showView(button.dataset.view));
-  });
-
-  document.querySelectorAll("[data-go]").forEach((button) => {
-    button.addEventListener("click", () => showView(button.dataset.go));
-  });
-
-  ["ttCourse", "ttSemester", "ttDay"].forEach((id) => {
+  ["ttCourse", "ttSemester", "dayFilter"].forEach((id) => {
     $(id)?.addEventListener("change", renderTimetable);
   });
 
-  $("printBtn")?.addEventListener("click", () => window.print());
-
-  $("showTeacherApplication")?.addEventListener("click", showTeacherApplication);
-  $("closeApplicationModal")?.addEventListener("click", () => {
-    $("applicationModal")?.classList.add("hidden");
-  });
-  $("modalGoApply")?.addEventListener("click", () => {
-    $("applicationModal")?.classList.add("hidden");
-    toast("Teacher application submission requires a configured backend.");
-  });
-
-  $("enableAlertsBtn")?.addEventListener("click", async () => {
-    if (!("Notification" in window)) {
-      toast("This browser does not support notifications.");
+  document.addEventListener("click", (event) => {
+    const viewButton = event.target.closest("[data-view]");
+    if (viewButton) {
+      showView(viewButton.dataset.view);
       return;
     }
 
-    const permission = await Notification.requestPermission();
-    $("alertStatus").textContent =
-      permission === "granted"
-        ? "Browser notifications enabled."
-        : "Notifications were not enabled.";
+    const noticeButton = event.target.closest("[data-delete-notice]");
+    if (noticeButton) {
+      deleteNotice(noticeButton.dataset.deleteNotice);
+      return;
+    }
+
+    const classButton = event.target.closest("[data-delete-class]");
+    if (classButton) {
+      deleteClass(classButton.dataset.deleteClass);
+    }
   });
 
-  $("resetDemoBtn")?.addEventListener("click", () => {
-    toast("Remote data was not deleted. Configure a secure admin delete action first.");
-  });
-
-  updateRoleForm("student");
-  setConnectionStatus("Connecting…");
-
-  Promise.all([loadNotices(), loadTimetable()])
-    .then(() => setConnectionStatus("Supabase connected"))
-    .catch((error) => {
-      console.error("Portal initialisation error:", error);
-      setConnectionStatus("Connection error");
-    });
+  loadAllData();
 }
 
 document.addEventListener("DOMContentLoaded", init);
