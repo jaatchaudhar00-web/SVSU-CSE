@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#10182b">
+  <title>SVSU CSE Portal</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="#">
+      <span class="brand-mark">S</span>
+      <span><strong>SVSU CSE</strong><small>Department Portal</small></span>
+    </a>
+    <div class="top-actions">
+      <span id="connectionLabel" class="status-pill">Demo mode</span>
+      <button id="avatarBtn" class="avatar-btn hidden" title="Open profile">?</button>
+    </div>
+  </header>
+
+  <main>
+    <section id="loginPage" class="login-layout">
+      <div class="hero-panel">
+        <span class="eyebrow">COMPUTER SCIENCE & ENGINEERING</span>
+        <h1>One portal.<br><span>Every class connected.</span></h1>
+        <p>Timetables, department notices, events and class updates in one place.</p>
+        <div class="hero-points">
+          <div><span class="point-icon">✓</span><span><b>Academic updates</b><small>Notices and schedule changes</small></span></div>
+          <div><span class="point-icon">◷</span><span><b>Class timetable</b><small>Course and semester-wise view</small></span></div>
+          <div><span class="point-icon">⌂</span><span><b>Role-based workspace</b><small>Student, teacher and administrator</small></span></div>
+        </div>
+        <p class="demo-note">Prototype: data is saved in this browser only. Do not use real passwords or sensitive student data until a secure backend is connected.</p>
+      </div>
+
+      <div class="login-card">
+        <div class="login-heading">
+          <span class="eyebrow">WELCOME BACK</span>
+          <h2>Sign in to portal</h2>
+          <p>Choose your account type to continue.</p>
+        </div>
+
+        <div class="role-tabs">
+          <button class="tab active" data-role="student" type="button">Student</button>
+          <button class="tab" data-role="teacher" type="button">Teacher</button>
+          <button class="tab" data-role="admin" type="button">Main Admin</button>
+        </div>
+
+        <form id="loginForm">
+          <label for="fullName">Full name</label>
+          <input id="fullName" name="fullName" placeholder="Enter your full name" required>
+
+          <label id="identityLabel" for="rollNumber">Roll number</label>
+          <input id="rollNumber" name="rollNumber" placeholder="Enter your roll number" required>
+
+          <div id="folderGroup">
+            <label for="folderNumber">Folder number / student ID</label>
+            <input id="folderNumber" name="folderNumber" placeholder="Enter folder number">
+          </div>
+
+          <div id="courseGroup">
+            <label for="course">Course</label>
+            <select id="course" name="course">
+              <option>B.Tech CSE</option>
+              <option>Diploma CSE</option>
+            </select>
+          </div>
+
+          <div id="semesterGroup">
+            <label for="semester">Semester</label>
+            <select id="semester" name="semester"></select>
+          </div>
+
+          <div id="adminPasswordGroup" class="hidden">
+            <label for="adminPassword">Main admin demo password</label>
+            <input id="adminPassword" name="adminPassword" type="password" placeholder="Demo password">
+            <p class="field-help">Demo only. This password is not secure production authentication.</p>
+          </div>
+
+          <button class="btn btn-primary btn-full" type="submit" id="loginSubmit">
+            Continue <span>→</span>
+          </button>
+        </form>
+
+        <div id="teacherApplyPrompt" class="teacher-apply-prompt hidden">
+          <span>New teacher?</span>
+          <button type="button" class="text-button" id="showTeacherApplication">Apply for teacher access</button>
+        </div>
+        <div class="login-foot">Need access? Contact the department administrator.</div>
+      </div>
+    </section>
+
+    <section id="dashboardPage" class="dashboard hidden">
+      <aside class="sidebar">
+        <div class="sidebar-user">
+          <div id="sidebarAvatar" class="large-avatar">S</div>
+          <div><strong id="sidebarName">User</strong><small id="sidebarRole">STUDENT</small></div>
+        </div>
+
+        <nav class="side-nav">
+          <button class="nav-link active" data-view="overview"><span>▦</span> Overview</button>
+          <button class="nav-link" data-view="timetable"><span>▤</span> Timetable</button>
+          <button class="nav-link" data-view="notices"><span>◉</span> Notices & Events <span id="noticeCount" class="nav-count">0</span></button>
+          <button class="nav-link" data-view="profile"><span>◎</span> My Profile</button>
+          <button class="nav-link hidden" id="teacherApplyNav" data-view="teacherApply"><span>＋</span> Teacher Application</button>
+          <button class="nav-link hidden" id="adminNav" data-view="admin"><span>⚙</span> Manage Portal</button>
+        </nav>
+
+        <div class="sidebar-bottom">
+          <div class="demo-sidebar-note">Local demo · backend not connected</div>
+          <button id="logoutBtn" class="logout-btn"><span>↪</span> Sign out</button>
+        </div>
+      </aside>
+
+      <section class="workspace">
+        <div class="page-heading">
+          <div>
+            <p class="breadcrumb">SVSU CSE / <span id="breadcrumbPage">Overview</span></p>
+            <h1 id="pageTitle">Department overview</h1>
+            <p id="pageSubtitle">Your academic information at a glance.</p>
+          </div>
+          <div class="date-chip"><span>◷</span><span id="todayDate"></span></div>
+        </div>
+
+        <section id="overviewView" class="view">
+          <div class="welcome-banner">
+            <div>
+              <span class="eyebrow light">YOUR DEPARTMENT SPACE</span>
+              <h2>Welcome, <span id="welcomeName">Student</span> 👋</h2>
+              <p>Keep up with notices, events and your class schedule.</p>
+            </div>
+            <div class="banner-art">S<span>+</span></div>
+          </div>
+
+          <div class="stats-grid">
+            <article class="stat-card"><div class="stat-icon blue">⌂</div><p>Course</p><strong id="courseStat">B.Tech CSE</strong></article>
+            <article class="stat-card"><div class="stat-icon violet">▦</div><p>Semester</p><strong id="semesterStat">Semester 1</strong></article>
+            <article class="stat-card"><div class="stat-icon teal">◷</div><p>Timetable entries</p><strong id="classStat">0</strong></article>
+            <article class="stat-card"><div class="stat-icon amber">◉</div><p>Notices & events</p><strong id="noticeStat">0</strong></article>
+          </div>
+
+          <div class="content-grid">
+            <article class="panel">
+              <div class="panel-heading">
+                <div><h3>Schedule preview</h3><p>Sample entries for your selected semester</p></div>
+                <button class="text-button" data-go="timetable">View timetable →</button>
+              </div>
+              <div id="todaySchedule" class="schedule-list"></div>
+            </article>
+            <article class="panel">
+              <div class="panel-heading">
+                <div><h3>Latest updates</h3><p>Department announcements</p></div>
+                <button class="text-button" data-go="notices">View all →</button>
+              </div>
+              <div id="latestNotices" class="latest-list"></div>
+            </article>
+          </div>
+        </section>
+
+        <section id="timetableView" class="view hidden">
+          <div class="panel">
+            <div class="panel-heading">
+              <div><h3>Class timetable</h3><p>Choose a course, semester and day.</p></div>
+              <button id="printBtn" class="btn btn-secondary" type="button">Print timetable</button>
+            </div>
+            <div class="filters">
+              <div><label for="ttCourse">Course</label><select id="ttCourse"><option>B.Tech CSE</option><option>Diploma CSE</option></select></div>
+              <div><label for="ttSemester">Semester</label><select id="ttSemester"></select></div>
+              <div><label for="ttDay">Day</label><select id="ttDay"><option>All</option><option>Monday</option><option>Tuesday</option><option>Wednesday</option><option>Thursday</option><option>Friday</option><option>Saturday</option></select></div>
+            </div>
+            <p id="ttSummary" class="muted"></p>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>Day</th><th>Time</th><th>Subject</th><th>Faculty</th><th>Room</th></tr></thead>
+                <tbody id="timetableBody"></tbody>
+              </table>
+            </div>
+            <p id="emptyTimetable" class="empty-state hidden">No timetable entries match these filters.</p>
+          </div>
+          <div id="teacherTimetablePanel" class="panel hidden">
+            <div class="panel-heading"><div><h3>Teacher timetable access</h3><p>Demo permissions are filtered by the subjects approved for this teacher.</p></div></div>
+            <p id="teacherScopeText" class="muted"></p>
+          </div>
+        </section>
+
+        <section id="noticesView" class="view hidden">
+          <div class="panel">
+            <div class="panel-heading">
+              <div><h3>Notices & events</h3><p>Academic announcements, events and timetable changes.</p></div>
+              <button id="enableAlertsBtn" class="btn btn-secondary" type="button">Enable alerts</button>
+            </div>
+            <div id="alertStatus" class="field-help">Browser alerts require permission. Sound may be blocked until you interact with the page.</div>
+            <div id="allNotices" class="notice-grid"></div>
+          </div>
+        </section>
+
+        <section id="profileView" class="view hidden">
+          <div class="panel profile-panel">
+            <div id="profileAvatar" class="profile-avatar">S</div>
+            <div><span class="eyebrow">ACCOUNT PROFILE</span><h2 id="profileName">User</h2><span id="profileRole" class="status-pill">STUDENT</span></div>
+          </div>
+          <div class="panel">
+            <h3>Profile details</h3>
+            <div class="profile-details">
+              <div><span>Roll number / username</span><strong id="profileRoll">—</strong></div>
+              <div><span>Folder number</span><strong id="profileFolder">—</strong></div>
+              <div><span>Course</span><strong id="profileCourse">—</strong></div>
+              <div><span>Semester</span><strong id="profileSemester">—</strong></div>
+            </div>
+          </div>
+        </section>
+
+        <section id="teacherApplyView" class="view hidden">
+          <div class="panel">
+            <div class="panel-heading">
+              <div><h3>Teacher access application</h3><p>Submit your profile and classes/subjects. Main Admin must approve it.</p></div>
+              <span class="status-pill">Approval required</span>
+            </div>
+            <form id="teacherApplicationForm" class="form-grid">
+              <div><label for="teacherName">Full name</label><input id="teacherName" required></div>
+              <div><label for="teacherEmail">Email</label><input id="teacherEmail" type="email" required></div>
+              <div><label for="teacherUsername">Teacher username / staff ID</label><input id="teacherUsername" required></div>
+              <div><label for="teacherPhoto">Profile photo (optional)</label><input id="teacherPhoto" type="file" accept="image/*"><div id="teacherPhotoPreview" class="photo-preview"></div></div>
+              <div class="span-all">
+                <label>Course and semester assignments</label>
+                <div id="teacherAssignments" class="assignment-grid"></div>
+                <p class="field-help">Select the courses and subjects you teach. These are demo selections until a backend validates permissions.</p>
+              </div>
+              <div class="span-all"><label for="teacherMessage">Message to administrator</label><textarea id="teacherMessage" rows="3" placeholder="Optional note"></textarea></div>
+              <div class="span-all"><button class="btn btn-primary" type="submit">Submit application</button></div>
+            </form>
+            <div id="teacherApplicationStatus" class="inline-status hidden"></div>
+          </div>
+        </section>
+
+        <section id="adminView" class="view hidden">
+          <div class="admin-warning"><strong>Demo admin panel</strong><span>Data and permissions are stored in this browser. This is not secure authentication.</span></div>
+          <div class="admin-grid">
+            <article class="panel">
+              <div class="panel-heading"><div><h3>Add timetable entry</h3><p>Publish a class schedule entry.</p></div></div>
+              <form id="addClassForm" class="form-grid">
+                <div><label for="adminCourse">Course</label><select id="adminCourse"><option>B.Tech CSE</option><option>Diploma CSE</option></select></div>
+                <div><label for="adminSemester">Semester</label><select id="adminSemester"></select></div>
+                <div><label for="adminDay">Day</label><select id="adminDay"><option>Monday</option><option>Tuesday</option><option>Wednesday</option><option>Thursday</option><option>Friday</option><option>Saturday</option></select></div>
+                <div><label for="adminTime">Time</label><input id="adminTime" placeholder="09:00 - 10:00" required></div>
+                <div><label for="adminSubject">Subject</label><input id="adminSubject" required></div>
+                <div><label for="adminFaculty">Faculty</label><input id="adminFaculty" required></div>
+                <div><label for="adminRoom">Room</label><input id="adminRoom" placeholder="Room / Lab" required></div>
+                <div class="span-all"><button class="btn btn-primary" type="submit">Add timetable entry</button></div>
+              </form>
+            </article>
+
+            <article class="panel">
+              <div class="panel-heading"><div><h3>Publish notice or event</h3><p>Include timetable changes and optional event photos.</p></div></div>
+              <form id="addNoticeForm" class="form-grid">
+                <div class="span-all"><label for="noticeTitle">Title</label><input id="noticeTitle" required placeholder="e.g. Tuesday class timing changed"></div>
+                <div><label for="noticeCategory">Type</label><select id="noticeCategory"><option>General</option><option>Academic</option><option>Timetable Change</option><option>Event</option><option>Urgent</option><option>Exam</option></select></div>
+                <div><label for="noticeDateTime">Effective date/time (optional)</label><input id="noticeDateTime" type="datetime-local"></div>
+                <div class="span-all"><label for="noticeText">Details</label><textarea id="noticeText" rows="3" required placeholder="Write the announcement"></textarea></div>
+                <div class="span-all"><label for="noticePhoto">Photo (optional)</label><input id="noticePhoto" type="file" accept="image/*"><div id="noticePhotoPreview" class="photo-preview"></div></div>
+                <div class="span-all checkbox-line"><input id="noticeSound" type="checkbox" checked><label for="noticeSound">Play a short sound for this urgent/timetable notice on this device</label></div>
+                <div class="span-all"><button class="btn btn-primary" type="submit">Publish notice</button></div>
+              </form>
+            </article>
+          </div>
+
+          <article class="panel">
+            <div class="panel-heading"><div><h3>Teacher applications</h3><p>Approve or reject access requests.</p></div><span id="pendingCount" class="status-pill">0 pending</span></div>
+            <div id="teacherApplicationsList" class="admin-list"></div>
+          </article>
+
+          <article class="panel">
+            <div class="panel-heading"><div><h3>Manage published data</h3><p>Remove custom timetable entries and notices.</p></div><button id="resetDemoBtn" class="btn btn-danger-outline" type="button">Reset demo data</button></div>
+            <div id="adminDataList" class="admin-list"></div>
+          </article>
+        </section>
+      </section>
+    </section>
+  </main>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <div id="applicationModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="applicationModalTitle">
+    <div class="modal-card">
+      <button id="closeApplicationModal" class="modal-close" type="button" aria-label="Close">×</button>
+      <span class="eyebrow">TEACHER ACCESS</span>
+      <h2 id="applicationModalTitle">Apply for teacher access</h2>
+      <p>Applications are stored locally in this demo. An administrator must approve access.</p>
+      <button id="modalGoApply" class="btn btn-primary btn-full" type="button">Open application form</button>
+    </div>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
