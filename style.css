@@ -860,38 +860,20 @@ tbody tr:hover {
   font-weight: 800;
 }
 
-.profile-grid {
-  display: grid;
-  grid-template-columns: 130px minmax(0, 1fr);
+.profile-panel {
+  display: flex;
+  align-items: center;
   gap: 22px;
-  align-items: start;
 }
 
-.profile-avatar {
-  width: 112px;
-  height: 112px;
-  display: grid;
-  place-items: center;
-  border-radius: 24px;
-  background: linear-gradient(135deg, #4568f5, #8a69ec);
-  color: #fff;
-  font: 800 38px Manrope, sans-serif;
-  overflow: hidden;
-}
-
-.profile-avatar img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.profile-info {
+.profile-details {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 16px;
+  margin-top: 16px;
 }
 
-.info-box {
+.profile-details > div {
   padding: 13px;
   border: 1px solid var(--line);
   border-radius: 10px;
@@ -899,18 +881,18 @@ tbody tr:hover {
   overflow-wrap: anywhere;
 }
 
-.info-box small,
-.info-box strong {
+.profile-details span,
+.profile-details strong {
   display: block;
 }
 
-.info-box small {
+.profile-details span {
   color: var(--muted);
   font-size: 10px;
   margin-bottom: 7px;
 }
 
-.info-box strong {
+.profile-details strong {
   font-size: 12px;
 }
 
@@ -919,6 +901,20 @@ tbody tr:hover {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 18px;
   align-items: start;
+}
+
+.admin-warning {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  background: #fff8e9;
+  border: 1px solid #f1dfb9;
+  color: #81642b;
+  padding: 12px 15px;
+  border-radius: 10px;
+  margin-bottom: 18px;
+  font-size: 11px;
 }
 
 .admin-row {
@@ -980,7 +976,7 @@ tbody tr:hover {
   background: #fff7f8;
 }
 
-.assignment-list {
+.assignment-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
@@ -1024,7 +1020,7 @@ tbody tr:hover {
   gap: 0 14px;
 }
 
-.form-grid .full-width {
+.form-grid .span-all {
   grid-column: 1 / -1;
 }
 
@@ -1043,22 +1039,23 @@ tbody tr:hover {
   border: 1px solid var(--line);
 }
 
-.inline-check {
+.checkbox-line {
   display: flex;
   align-items: center;
   gap: 9px;
   margin: 14px 0;
 }
 
-.inline-check input {
+.checkbox-line input {
   width: auto;
+  flex-shrink: 0;
 }
 
-.inline-check label {
+.checkbox-line label {
   margin: 0;
 }
 
-.modal-backdrop {
+.modal {
   position: fixed;
   inset: 0;
   background: #10182b99;
@@ -1069,11 +1066,25 @@ tbody tr:hover {
 }
 
 .modal-card {
+  position: relative;
   width: min(100%, 480px);
   background: #fff;
   border-radius: 18px;
   padding: 28px;
   box-shadow: var(--shadow);
+}
+
+.modal-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  border: 0;
+  background: #f1f3f9;
+  border-radius: 8px;
+  width: 34px;
+  height: 34px;
+  font-size: 22px;
+  color: var(--muted);
 }
 
 .modal-actions {
@@ -1265,23 +1276,24 @@ tbody tr:hover {
   }
 
   .notice-grid,
-  .profile-info,
-  .assignment-list,
+  .profile-details,
+  .assignment-grid,
   .form-grid {
     grid-template-columns: 1fr;
   }
 
-  .profile-grid {
-    grid-template-columns: 1fr;
+  .form-grid .span-all {
+    grid-column: auto;
+  }
+
+  .profile-panel {
+    align-items: flex-start;
+    flex-direction: column;
   }
 
   .profile-avatar {
     width: 90px;
     height: 90px;
-  }
-
-  .form-grid .full-width {
-    grid-column: auto;
   }
 
   .schedule-item {
